@@ -3,88 +3,187 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mi GPS Web</title>
-    <!-- Cargamos CSS de Leaflet -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <title>GPS Microbús</title>
+    <!-- Librerías de Leaflet y Routing Machine -->
+    <link rel="stylesheet" href="https://unpkg.com" />
+    <link rel="stylesheet" href="https://unpkg.com" />
     <style>
-        #map { height: 80vh; width: 100%; }
-        .controls { padding: 10px; background: #f4f4f4; display: flex; gap: 10px; }
-        #saved-places { padding: 10px; border-top: 1px solid #ccc; height: 15vh; overflow-y: auto; }
+        body { margin: 0; padding: 0; font-family: sans-serif; }
+        #map { height: 70vh; width: 100%; }
+        .controls { padding: 10px; background: #eee; display: flex; gap: 10px; }
+        #lista-lugares { padding: 10px; max-height: 25vh; overflow-y: auto; }
+        .lugar-item { border-bottom: 1px solid #ccc; padding: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .lugar-item.seleccionado { background-color: #d1ecf1; }
+        .btn-group button { margin-left: 5px; cursor: pointer; }
     </style>
 </head>
 <body>
 
-    <div class="controls">
-        <button onclick="centerMap()">Centrar Mi Posición</button>
-        <button onclick="saveCurrentLocation()">Guardar Lugar Actual</button>
-    </div>
+<div id="map"></div>
+<div class="controls">
+    <button onclick="centrarMapa()">Centrar Posición</button>
+    <button onclick="guardarLugar()">Guardar Lugar Actual</button>
+</div>
+<div id="lista-lugares"></div>
 
-    <div id="map"></div>
-    <div id="saved-places"><strong>Lugares Guardados:</strong><ul id="places-list"></ul></div>
+<script src="https://unpkg.com"></script>
+<script src="https://unpkg.com"></script>
 
-    <!-- Cargamos JS de Leaflet -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    let map, userMarker, routingControl;
+    let currentPos = null;
+    let sitiosGuardados = JSON.parse(localStorage.getItem('sitios')) || [];
+    let seleccionadosParaRuta = [];
 
-    <script>
-        let map, userMarker, currentCoords;
+    // Icono personalizado de Microbús
+    const busIcon = L.icon({
+        iconUrl: 'https://cdn-icons-png.flaticon.com', // Reemplazar por tu imagen
+        iconSize: [40, 40],
+        iconAnchor: [20, 40]
+    });
 
-        // 1. Inicializar el mapa
-        function initMap() {
-            map = L.map('map').setView([0, 0], 15);
+    function init() {
+        // Inicializar mapa con mosaicos de Google Maps
+        map = L.map('map').setView([0, 0], 15);
+        L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+            maxZoom: 20,
+            subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+            attribution: '© Google Maps'
+        }).addTo(map);
 
-            // Capa de Google Maps (Mosaicos)
-            L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
-                maxZoom: 20,
-                subdomains:['mt0','mt1','mt2','mt3'],
-                attribution: 'Google Maps'
-            }).addTo(map);
+        // Seguimiento de ubicación en tiempo real
+        map.locate({ setView: true, watch: true, enableHighAccuracy: true });
 
-            // Iniciar seguimiento GPS
-            trackLocation();
-        }
-
-        // 2. Seguimiento frecuente con watchPosition
-        function trackLocation() {
-            if (navigator.geolocation) {
-                navigator.geolocation.watchPosition(function(pos) {
-                    currentCoords = [pos.coords.latitude, pos.coords.longitude];
-                    
-                    if (!userMarker) {
-                        userMarker = L.marker(currentCoords).addTo(map).bindPopup("Estás aquí").openPopup();
-                        map.setView(currentCoords, 15);
-                    } else {
-                        userMarker.setLatLng(currentCoords);
-                    }
-                }, function(err) {
-                    console.error("Error GPS: ", err);
-                }, { enableHighAccuracy: true });
+        map.on('locationfound', (e) => {
+            currentPos = e.latlng;
+            if (!userMarker) {
+                userMarker = L.marker(e.latlng, { icon: busIcon }).addTo(map).bindPopup("Mi Posición");
+            } else {
+                userMarker.setLatLng(e.latlng);
             }
-        }
+        });
 
-        // 3. Botón para centrar
-        function centerMap() {
-            if (currentCoords) {
-                map.panTo(currentCoords);
+        // Controlar visibilidad de etiquetas según zoom
+        map.on('zoomend', actualizarVisibilidadMarcadores);
+
+        renderizarLista();
+    }
+
+    function centrarMapa() {
+        if (currentPos) map.setView(currentPos, 17);
+    }
+
+    function guardarLugar() {
+        if (!currentPos) return alert("Esperando señal GPS...");
+        const nombre = prompt("Nombre del lugar:");
+        if (nombre) {
+            const nuevoSitio = { id: Date.now(), nombre, lat: currentPos.lat, lng: currentPos.lng };
+            sitiosGuardados.push(nuevoSitio);
+            localStorage.setItem('sitios', JSON.stringify(sitiosGuardados));
+            renderizarLista();
+        }
+    }
+
+    function renderizarLista() {
+        const contenedor = document.getElementById('lista-lugares');
+        contenedor.innerHTML = '';
+        
+        // Limpiar marcadores viejos del mapa (excepto el de usuario)
+        map.eachLayer(layer => { if (layer instanceof L.Marker && layer !== userMarker) map.removeLayer(layer); });
+
+        sitiosGuardados.forEach(sitio => {
+            // Añadir al mapa
+            const marker = L.marker([sitio.lat, sitio.lng])
+                .bindTooltip(sitio.nombre, { permanent: true, direction: 'top' })
+                .addTo(map);
+            marker._sitioId = sitio.id;
+
+            // Crear elemento en la lista
+            const item = document.createElement('div');
+            item.className = 'lugar-item';
+            item.innerHTML = `
+                <span><strong>${sitio.nombre}</strong><br><small>${sitio.lat.toFixed(4)}, ${sitio.lng.toFixed(4)}</small></span>
+                <div class="btn-group">
+                    <button onclick="irASitio(${sitio.lat}, ${sitio.lng})">Ir</button>
+                    <button onclick="editarSitio(${sitio.id})">Editar</button>
+                    <button onclick="eliminarSitio(${sitio.id})">Eliminar</button>
+                </div>
+            `;
+            item.onclick = (e) => {
+                if(e.target.tagName !== 'BUTTON') seleccionarParaRuta(sitio, item);
+            };
+            contenedor.appendChild(item);
+        });
+        actualizarVisibilidadMarcadores();
+    }
+
+    function irASitio(lat, lng) {
+        if (!currentPos) return;
+        trazarRuta(currentPos, L.latLng(lat, lng));
+    }
+
+    function trazarRuta(start, end) {
+        if (routingControl) map.removeControl(routingControl);
+        routingControl = L.Routing.control({
+            waypoints: [start, end],
+            routeWhileDragging: false,
+            language: 'es'
+        }).on('routeselected', function(e) {
+            const route = e.route;
+            const dist = (route.summary.totalDistance / 1000).toFixed(2);
+            const time = Math.round(route.summary.totalTime / 60);
+            alert(`Distancia: ${dist} km | Tiempo estimado: ${time} min`);
+        }).addTo(map);
+    }
+
+    function seleccionarParaRuta(sitio, elemento) {
+        if (seleccionadosParaRuta.includes(sitio)) return;
+        
+        seleccionadosParaRuta.push(sitio);
+        elemento.classList.add('seleccionado');
+
+        if (seleccionadosParaRuta.length === 2) {
+            const s1 = seleccionadosParaRuta[0];
+            const s2 = seleccionadosParaRuta[1];
+            trazarRuta(L.latLng(s1.lat, s1.lng), L.latLng(s2.lat, s2.lng));
+            // Reset tras mostrar
+            setTimeout(() => {
+                seleccionadosParaRuta = [];
+                document.querySelectorAll('.lugar-item').forEach(el => el.classList.remove('seleccionado'));
+            }, 2000);
+        }
+    }
+
+    function editarSitio(id) {
+        const sitio = sitiosGuardados.find(s => s.id === id);
+        const nuevoNombre = prompt("Nuevo nombre:", sitio.nombre);
+        if (nuevoNombre) {
+            sitio.nombre = nuevoNombre;
+            localStorage.setItem('sitios', JSON.stringify(sitiosGuardados));
+            renderizarLista();
+        }
+    }
+
+    function eliminarSitio(id) {
+        if (confirm("¿Seguro que quieres eliminar este lugar?")) {
+            sitiosGuardados = sitiosGuardados.filter(s => s.id !== id);
+            localStorage.setItem('sitios', JSON.stringify(sitiosGuardados));
+            renderizarLista();
+        }
+    }
+
+    function actualizarVisibilidadMarcadores() {
+        const zoom = map.getZoom();
+        map.eachLayer(layer => {
+            if (layer instanceof L.Marker && layer !== userMarker) {
+                // Al alejar (zoom < 14) ocultamos iconos y nombres
+                if (zoom < 14) layer.getElement()?.style.setProperty('display', 'none');
+                else layer.getElement()?.style.setProperty('display', 'block');
             }
-        }
+        });
+    }
 
-        // 4. Guardar lugar con nombre y coordenadas
-        function saveCurrentLocation() {
-            if (!currentCoords) return alert("Ubicación no disponible.");
-            
-            const name = prompt("Escribe un nombre para este lugar:");
-            if (name) {
-                const list = document.getElementById('places-list');
-                const li = document.createElement('li');
-                li.innerHTML = `<strong>${name}</strong>: ${currentCoords[0].toFixed(5)}, ${currentCoords[1].toFixed(5)}`;
-                list.appendChild(li);
-                
-                // Añadir un marcador permanente en el lugar guardado
-                L.marker(currentCoords).addTo(map).bindPopup(name);
-            }
-        }
-
-        window.onload = initMap;
-    </script>
+    init();
+</script>
 </body>
 </html>
