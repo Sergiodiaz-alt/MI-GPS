@@ -4,151 +4,43 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>GPS Pro - Rutas</title>
-
+    
     <!-- Leaflet CSS y JS -->
     <link rel="stylesheet" href="https://unpkg.com" />
     <script src="https://unpkg.com"></script>
-
+    
     <!-- Leaflet Routing Machine (Para las rutas) -->
     <link rel="stylesheet" href="https://unpkg.com" />
     <script src="https://unpkg.com"></script>
 
     <style>
-        body {
-            margin: 0;
-            font-family: sans-serif;
-            overflow: hidden;
-        }
-
-        #map {
-            height: 100vh;
-            width: 100vw;
-            z-index: 1;
-        }
-
+        body { margin: 0; font-family: sans-serif; overflow: hidden; }
+        #map { height: 100vh; width: 100vw; z-index: 1; }
+        
         /* Botones flotantes inferiores */
-        .main-controls {
-            position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 1000;
-            display: flex;
-            gap: 10px;
-        }
-
-        .btn {
-            padding: 12px 15px;
-            border: none;
-            border-radius: 50px;
-            color: white;
-            font-weight: bold;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-            cursor: pointer;
-        }
-
-        .btn-center {
-            background: #007bff;
-        }
-
-        .btn-save {
-            background: #28a745;
-        }
-
-        .btn-sat {
-            background: #fd7e14;
-        }
+        .main-controls { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 1000; display: flex; gap: 10px; }
+        .btn { padding: 12px 15px; border: none; border-radius: 50px; color: white; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.3); cursor: pointer; }
+        .btn-center { background: #007bff; }
+        .btn-save { background: #28a745; }
+        .btn-sat { background: #fd7e14; }
 
         /* Panel Lateral de Lugares */
-        #side-panel {
-            position: fixed;
-            top: 0;
-            right: -300px;
-            width: 280px;
-            height: 100%;
-            background: white;
-            z-index: 2000;
-            transition: 0.3s;
-            box-shadow: -2px 0 5px rgba(0,0,0,0.2);
-            display: flex;
-            flex-direction: column;
-        }
-
-            #side-panel.open {
-                right: 0;
-            }
-
-        .panel-header {
-            padding: 15px;
-            background: #333;
-            color: white;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        #places-list {
-            flex-grow: 1;
-            overflow-y: auto;
-            padding: 10px;
-            list-style: none;
-            margin: 0;
-        }
-
+        #side-panel { position: fixed; top: 0; right: -300px; width: 280px; height: 100%; background: white; z-index: 2000; transition: 0.3s; box-shadow: -2px 0 5px rgba(0,0,0,0.2); display: flex; flex-direction: column; }
+        #side-panel.open { right: 0; }
+        .panel-header { padding: 15px; background: #333; color: white; display: flex; justify-content: space-between; align-items: center; }
+        #places-list { flex-grow: 1; overflow-y: auto; padding: 10px; list-style: none; margin: 0; }
+        
         /* Items de la lista */
-        .place-item {
-            border-bottom: 1px solid #eee;
-            padding: 10px 0;
-        }
-
-        .place-name {
-            font-weight: bold;
-            display: block;
-            margin-bottom: 5px;
-        }
-
-        .item-btns {
-            display: flex;
-            gap: 5px;
-        }
-
-        .btn-small {
-            padding: 5px 8px;
-            border: none;
-            border-radius: 3px;
-            color: white;
-            font-size: 11px;
-            cursor: pointer;
-        }
-
-        .btn-go {
-            background: #007bff;
-        }
-
-        .btn-edit {
-            background: #ffc107;
-            color: black;
-        }
-
-        .btn-del {
-            background: #dc3545;
-        }
+        .place-item { border-bottom: 1px solid #eee; padding: 10px 0; }
+        .place-name { font-weight: bold; display: block; margin-bottom: 5px; }
+        .item-btns { display: flex; gap: 5px; }
+        .btn-small { padding: 5px 8px; border: none; border-radius: 3px; color: white; font-size: 11px; cursor: pointer; }
+        .btn-go { background: #007bff; }
+        .btn-edit { background: #ffc107; color: black; }
+        .btn-del { background: #dc3545; }
 
         /* Botón para abrir panel */
-        .btn-open-panel {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 1000;
-            background: white;
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
-            border: none;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-            font-size: 20px;
-            cursor: pointer;
-        }
+        .btn-open-panel { position: fixed; top: 20px; right: 20px; z-index: 1000; background: white; width: 50px; height: 50px; border-radius: 50%; border: none; box-shadow: 0 2px 5px rgba(0,0,0,0.3); font-size: 20px; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -176,14 +68,14 @@
         let savedPlaces = JSON.parse(localStorage.getItem('gps_data')) || [];
         let isSatellite = false;
 
-        const streetLayer = L.tileLayer('http://{s}://{x}&y={y}&z={z}', { subdomains: ['mt0', 'mt1', 'mt2', 'mt3'] });
-        const satLayer = L.tileLayer('http://{s}://{x}&y={y}&z={z}', { subdomains: ['mt0', 'mt1', 'mt2', 'mt3'] });
+        const streetLayer = L.tileLayer('http://{s}://{x}&y={y}&z={z}',{subdomains:['mt0','mt1','mt2','mt3']});
+        const satLayer = L.tileLayer('http://{s}://{x}&y={y}&z={z}',{subdomains:['mt0','mt1','mt2','mt3']});
 
         function initMap() {
             map = L.map('map', { zoomControl: false }).setView(, 2);
             streetLayer.addTo(map);
             renderList();
-
+            
             navigator.geolocation.watchPosition(pos => {
                 userCoords = [pos.coords.latitude, pos.coords.longitude];
                 if (!userMarker) {
@@ -221,13 +113,13 @@
                 const li = document.createElement('li');
                 li.className = 'place-item';
                 li.innerHTML = `
-                        <span class="place-name">${p.name}</span>
-                        <div class="item-btns">
-                            <button class="btn-small btn-go" onclick="calculateRoute(${p.lat}, ${p.lng})">Ir</button>
-                            <button class="btn-small btn-edit" onclick="editPlace(${p.id})">✎</button>
-                            <button class="btn-small btn-del" onclick="deletePlace(${p.id})">🗑</button>
-                        </div>
-                    `;
+                    <span class="place-name">${p.name}</span>
+                    <div class="item-btns">
+                        <button class="btn-small btn-go" onclick="calculateRoute(${p.lat}, ${p.lng})">Ir</button>
+                        <button class="btn-small btn-edit" onclick="editPlace(${p.id})">✎</button>
+                        <button class="btn-small btn-del" onclick="deletePlace(${p.id})">🗑</button>
+                    </div>
+                `;
                 list.appendChild(li);
             });
         }
@@ -235,9 +127,9 @@
         function calculateRoute(destLat, destLng) {
             if (!userCoords) return alert("No hay posición GPS.");
             if (routingControl) map.removeControl(routingControl);
-
+            
             routingControl = L.Routing.control({
-                waypoints: [L.latLng(userCoords), L.latLng(destLat, destLng)],
+                waypoints: [ L.latLng(userCoords), L.latLng(destLat, destLng) ],
                 routeWhileDragging: false,
                 language: 'es',
                 createMarker: () => null // No crear marcadores extra
