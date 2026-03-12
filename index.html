@@ -3,42 +3,40 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GPS Microbús Pro</title>
-    <!-- Leaflet CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <title>GPS Microbús v3</title>
+    <link rel="stylesheet" href="https://unpkg.com" />
     <link rel="stylesheet" href="https://unpkg.com" />
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; }
-        /* IMPORTANTE: El mapa DEBE tener altura fija o 100% */
-        #map { height: 70vh; width: 100%; background: #ddd; }
-        .controls { height: 10vh; padding: 10px; background: #333; display: flex; gap: 10px; align-items: center; justify-content: center; }
-        .controls button { padding: 10px; cursor: pointer; border-radius: 5px; border: none; background: #ffcc00; font-weight: bold; }
-        #lista-lugares { height: 20vh; overflow-y: auto; background: white; border-top: 2px solid #333; }
-        .lugar-item { border-bottom: 1px solid #eee; padding: 10px; display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
-        .lugar-item.seleccionado { background-color: #fff3cd; border-left: 5px solid #ffcc00; }
-        .btn-group button { margin-left: 4px; padding: 5px; font-size: 11px; }
+        body, html { margin: 0; padding: 0; height: 100%; width: 100%; font-family: sans-serif; }
+        #map { height: 65vh; width: 100%; background: #e0e0e0; }
+        .controls { height: 8vh; padding: 5px; background: #222; display: flex; gap: 8px; align-items: center; justify-content: center; }
+        .controls button { padding: 12px; cursor: pointer; border-radius: 8px; border: none; background: #ffcc00; font-weight: bold; color: #000; }
+        #lista-lugares { height: 27vh; overflow-y: auto; background: #fff; border-top: 3px solid #ffcc00; }
+        .lugar-item { border-bottom: 1px solid #eee; padding: 12px; display: flex; justify-content: space-between; align-items: center; }
+        .lugar-item.seleccionado { background-color: #fff9c4; border-left: 6px solid #fbc02d; }
+        .btn-group button { margin-left: 5px; padding: 6px 10px; border-radius: 4px; border: 1px solid #ccc; background: #f8f8f8; }
+        .info-puntos { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 1000; background: white; padding: 5px 15px; border-radius: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: none; font-size: 12px; }
     </style>
 </head>
 <body>
 
+<div id="info-ruta" class="info-puntos">Selecciona otro lugar para ver la ruta...</div>
 <div id="map"></div>
 <div class="controls">
-    <button onclick="centrarMapa()">📍 Centrar</button>
-    <button onclick="guardarLugar()">⭐ Guardar Aquí</button>
+    <button onclick="centrarMapa()">📍 Centrar GPS</button>
+    <button onclick="guardarLugarManual()">⭐ Guardar Mi Posición</button>
 </div>
 <div id="lista-lugares"></div>
 
-<!-- Leaflet JS -->
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com"></script>
 <script src="https://unpkg.com"></script>
 
 <script>
     let map, userMarker, routingControl;
     let currentPos = null;
-    let sitiosGuardados = JSON.parse(localStorage.getItem('sitios_gps')) || [];
+    let sitiosGuardados = JSON.parse(localStorage.getItem('sitios_v3')) || [];
     let seleccionadosParaRuta = [];
 
-    // Icono de Microbús (Asegúrate de tener conexión a internet para cargarlo)
     const busIcon = L.icon({
         iconUrl: 'https://cdn-icons-png.flaticon.com',
         iconSize: [40, 40],
@@ -46,43 +44,37 @@
     });
 
     function init() {
-        // Inicializar mapa en una posición por defecto (Bogotá como ejemplo)
-        map = L.map('map').setView([4.6097, -74.0817], 15);
+        map = L.map('map').setView([0, 0], 15);
 
-        // Capa de Google Maps (Satelital/Híbrida)
-        const googleLayer = L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
-            maxZoom: 20,
-            subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
-            attribution: '© Google Maps'
+        // Capa Google Maps
+        L.tileLayer('https://{s}://{x}&y={y}&z={z}', {
+            maxZoom: 20, subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], attribution: '© Google'
+        }).addTo(map);
+
+        // --- NUEVA FUNCIÓN: Guardar al tocar el mapa ---
+        map.on('click', function(e) {
+            const lat = e.latlng.lat;
+            const lng = e.latlng.lng;
+            crearNuevoSitio(lat, lng);
         });
 
-        // Capa de respaldo (OpenStreetMap) por si Google falla
-        const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap'
-        });
-
-        googleLayer.addTo(map);
-
-        // Activar GPS
+        // GPS Real
         map.locate({ setView: true, watch: true, enableHighAccuracy: true });
 
         map.on('locationfound', (e) => {
             currentPos = e.latlng;
             if (!userMarker) {
-                userMarker = L.marker(e.latlng, { icon: busIcon }).addTo(map).bindPopup("Estás aquí");
+                userMarker = L.marker(e.latlng, { icon: busIcon }).addTo(map).bindPopup("Microbús");
             } else {
                 userMarker.setLatLng(e.latlng);
             }
         });
 
-        map.on('locationerror', () => alert("No se pudo obtener tu ubicación GPS. Revisa los permisos."));
-
-        // Ocultar nombres al alejar zoom
+        // Visibilidad de nombres por Zoom
         map.on('zoomend', () => {
             const zoom = map.getZoom();
-            document.querySelectorAll('.leaflet-tooltip').forEach(t => {
-                t.style.display = zoom < 15 ? 'none' : 'block';
-            });
+            const labels = document.querySelectorAll('.leaflet-tooltip');
+            labels.forEach(l => l.style.display = zoom < 15 ? 'none' : 'block');
         });
 
         renderizarLista();
@@ -90,105 +82,118 @@
 
     function centrarMapa() {
         if (currentPos) map.flyTo(currentPos, 18);
-        else alert("Buscando señal GPS...");
+        else alert("Obteniendo señal GPS...");
     }
 
-    function guardarLugar() {
-        if (!currentPos) return alert("Esperando señal GPS...");
-        const nombre = prompt("Nombre para este lugar:");
+    // Guardar posición donde está el GPS
+    function guardarLugarManual() {
+        if (!currentPos) return alert("Esperando señal...");
+        crearNuevoSitio(currentPos.lat, currentPos.lng);
+    }
+
+    // Lógica general para guardar (sea por botón o por toque en mapa)
+    function crearNuevoSitio(lat, lng) {
+        const nombre = prompt("Nombre para este punto guardado:");
         if (nombre) {
-            const nuevoSitio = { id: Date.now(), nombre, lat: currentPos.lat, lng: currentPos.lng };
-            sitiosGuardados.push(nuevoSitio);
-            localStorage.setItem('sitios_gps', JSON.stringify(sitiosGuardados));
+            const nuevo = { id: Date.now(), nombre, lat, lng };
+            sitiosGuardados.push(nuevo);
+            localStorage.setItem('sitios_v3', JSON.stringify(sitiosGuardados));
             renderizarLista();
         }
     }
 
     function renderizarLista() {
-        const contenedor = document.getElementById('lista-lugares');
-        contenedor.innerHTML = '';
+        const lista = document.getElementById('lista-lugares');
+        lista.innerHTML = '';
         
-        // Limpiar marcadores antiguos
+        // Limpiar marcadores viejos
         map.eachLayer(layer => { 
             if (layer instanceof L.Marker && layer !== userMarker) map.removeLayer(layer); 
         });
 
         sitiosGuardados.forEach(sitio => {
-            // Marcador en mapa
+            // Icono en el mapa
             L.marker([sitio.lat, sitio.lng])
                 .addTo(map)
-                .bindTooltip(sitio.nombre, { permanent: true, direction: 'top', className: 'map-label' });
+                .bindTooltip(sitio.nombre, { permanent: true, direction: 'top' });
 
-            // Elemento en lista HTML
-            const item = document.createElement('div');
-            item.className = 'lugar-item';
-            item.innerHTML = `
-                <span><strong>${sitio.nombre}</strong></span>
+            // Fila en la lista
+            const div = document.createElement('div');
+            div.className = 'lugar-item';
+            div.innerHTML = `
+                <div style="flex:1">
+                    <strong>${sitio.nombre}</strong><br>
+                    <small style="color:gray">${sitio.lat.toFixed(5)}, ${sitio.lng.toFixed(5)}</small>
+                </div>
                 <div class="btn-group">
-                    <button onclick="irASitio(${sitio.lat}, ${sitio.lng})">Ir</button>
-                    <button onclick="editarSitio(${sitio.id})">✏️</button>
-                    <button onclick="eliminarSitio(${sitio.id})" style="background:#ff4444; color:white;">X</button>
+                    <button onclick="irDesdeAqui(${sitio.lat}, ${sitio.lng})">Ir</button>
+                    <button onclick="editar(${sitio.id})">✏️</button>
+                    <button onclick="eliminar(${sitio.id})" style="color:red">🗑️</button>
                 </div>
             `;
-            item.onclick = (e) => {
-                if(e.target.tagName !== 'BUTTON') seleccionarDosPuntos(sitio, item);
+            div.onclick = (e) => {
+                if(e.target.tagName !== 'BUTTON') seleccionarParaRuta(sitio, div);
             };
-            contenedor.appendChild(item);
+            lista.appendChild(div);
         });
     }
 
-    function irASitio(lat, lng) {
-        if (!currentPos) return alert("No tengo tu ubicación actual");
+    function irDesdeAqui(lat, lng) {
+        if (!currentPos) return alert("GPS no disponible");
         trazarRuta(currentPos, L.latLng(lat, lng));
     }
 
-    function seleccionarDosPuntos(sitio, elemento) {
+    function seleccionarParaRuta(sitio, elemento) {
         if (seleccionadosParaRuta.includes(sitio)) return;
         
         elemento.classList.add('seleccionado');
         seleccionadosParaRuta.push(sitio);
+        document.getElementById('info-ruta').style.display = 'block';
 
         if (seleccionadosParaRuta.length === 2) {
             const p1 = L.latLng(seleccionadosParaRuta[0].lat, seleccionadosParaRuta[0].lng);
             const p2 = L.latLng(seleccionadosParaRuta[1].lat, seleccionadosParaRuta[1].lng);
             trazarRuta(p1, p2);
             
-            // Limpiar selección tras 3 segundos
             setTimeout(() => {
                 seleccionadosParaRuta = [];
+                document.getElementById('info-ruta').style.display = 'none';
                 renderizarLista();
-            }, 3000);
+            }, 5000);
         }
     }
 
-    function trazarRuta(inicio, fin) {
+    function trazarRuta(ini, fin) {
         if (routingControl) map.removeControl(routingControl);
         routingControl = L.Routing.control({
-            waypoints: [inicio, fin],
-            lineOptions: { styles: [{ color: '#007bff', weight: 6 }] },
-            createMarker: () => null, // No duplicar marcadores
+            waypoints: [ini, fin],
+            lineOptions: { styles: [{ color: '#f39c12', weight: 7 }] },
+            createMarker: () => null,
             language: 'es'
         }).on('routeselected', (e) => {
-            const r = e.route.summary;
-            alert(`Ruta: ${(r.totalDistance/1000).toFixed(1)} km | Aprox: ${Math.round(r.totalTime/60)} min`);
+            const s = e.route.summary;
+            const dist = (s.totalDistance/1000).toFixed(2);
+            const tiempo = Math.round(s.totalTime/60);
+            alert(`Ruta trazada: ${dist} km | Tiempo: ${tiempo} min aprox.`);
         }).addTo(map);
     }
 
-    function editarSitio(id) {
-        const index = sitiosGuardados.findIndex(s => s.id === id);
-        const nuevo = prompt("Nuevo nombre:", sitiosGuardados[index].nombre);
+    function editar(id) {
+        const sitio = sitiosGuardados.find(s => s.id === id);
+        const nuevo = prompt("Nuevo nombre:", sitio.nombre);
         if (nuevo) {
-            sitiosGuardados[index].nombre = nuevo;
-            localStorage.setItem('sitios_gps', JSON.stringify(sitiosGuardados));
+            sitio.nombre = nuevo;
+            localStorage.setItem('sitios_v3', JSON.stringify(sitiosGuardados));
             renderizarLista();
         }
     }
 
-    function eliminarSitio(id) {
-        if (confirm("¿Eliminar este lugar permanentemente?")) {
+    function eliminar(id) {
+        if (confirm("¿Eliminar este sitio definitivamente?")) {
             sitiosGuardados = sitiosGuardados.filter(s => s.id !== id);
-            localStorage.setItem('sitios_gps', JSON.stringify(sitiosGuardados));
+            localStorage.setItem('sitios_v3', JSON.stringify(sitiosGuardados));
             renderizarLista();
+            if (routingControl) map.removeControl(routingControl);
         }
     }
 
