@@ -2,263 +2,89 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Mi Mapa GPS</title>
-
-    <!-- Librerías de Mapas y Rutas -->
-    <link rel="stylesheet" href="https://unpkg.com" />
-    <link rel="stylesheet" href="https://unpkg.com" />
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mi GPS Web</title>
+    <!-- Cargamos CSS de Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body, html {
-            margin: 0;
-            height: 100%;
-            font-family: sans-serif;
-        }
-
-        #map {
-            height: 100vh;
-            width: 100%;
-        }
-
-        /* Botones de Control */
-        .controls {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            z-index: 1000;
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-        }
-
-        button {
-            padding: 10px;
-            background: white;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            cursor: pointer;
-            font-weight: bold;
-        }
-
-        /* Lista de Lugares */
-        #place-list-container {
-            position: absolute;
-            bottom: 20px;
-            left: 10px;
-            right: 10px;
-            background: white;
-            z-index: 1001;
-            border-radius: 10px;
-            max-height: 50%;
-            overflow-y: auto;
-            display: none;
-            padding: 15px;
-            box-shadow: 0 0 15px rgba(0,0,0,0.2);
-        }
-
-        .place-item {
-            border-bottom: 1px solid #eee;
-            padding: 10px 0;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .place-name {
-            font-weight: bold;
-            color: #333;
-            cursor: pointer;
-            padding: 5px;
-        }
-
-            .place-name.selected {
-                background: #007bff;
-                color: white;
-                border-radius: 4px;
-            }
-
-        .place-actions {
-            display: flex;
-            gap: 5px;
-            margin-top: 5px;
-        }
-
-        .btn-go {
-            background: #28a745;
-            color: white;
-            border: none;
-        }
-
-        .btn-edit {
-            background: #ffc107;
-            color: black;
-            border: none;
-        }
-
-        .btn-del {
-            background: #dc3545;
-            color: white;
-            border: none;
-        }
+        #map { height: 80vh; width: 100%; }
+        .controls { padding: 10px; background: #f4f4f4; display: flex; gap: 10px; }
+        #saved-places { padding: 10px; border-top: 1px solid #ccc; height: 15vh; overflow-y: auto; }
     </style>
 </head>
 <body>
 
     <div class="controls">
-        <button onclick="centerMap()">📍 Centrar GPS</button>
-        <button onclick="saveCurrentLocation()">💾 Guardar Lugar</button>
-        <button onclick="toggleList()">📂 Mis Lugares</button>
-    </div>
-
-    <div id="place-list-container">
-        <h3>Lugares Guardados</h3>
-        <div id="list-items"></div>
-        <button onclick="toggleList()" style="width:100%; margin-top:10px;">Cerrar</button>
+        <button onclick="centerMap()">Centrar Mi Posición</button>
+        <button onclick="saveCurrentLocation()">Guardar Lugar Actual</button>
     </div>
 
     <div id="map"></div>
+    <div id="saved-places"><strong>Lugares Guardados:</strong><ul id="places-list"></ul></div>
 
-    <!-- Scripts -->
-    <script src="https://unpkg.com"></script>
-    <script src="https://unpkg.com"></script>
+    <!-- Cargamos JS de Leaflet -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
-        let map, userMarker, routingControl;
-        let userCoords = null;
-        let savedPlaces = JSON.parse(localStorage.getItem('myPlaces')) || [];
-        let selectedPlace1 = null;
+        let map, userMarker, currentCoords;
 
-        // 1. Configurar Mapa y Capas de Google
-        map = L.map('map').setView([0, 0], 2);
+        // 1. Inicializar el mapa
+        function initMap() {
+            map = L.map('map').setView([0, 0], 15);
 
-        const googleStreets = L.tileLayer('http://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
-            maxZoom: 20, subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
-        });
-        const googleSat = L.tileLayer('http://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
-            maxZoom: 20, subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
-        });
-
-        googleStreets.addTo(map);
-
-        // Control de capas para cambiar a Satélite
-        const baseMaps = { "Mapa": googleStreets, "Satélite": googleSat };
-        L.control.layers(baseMaps).addTo(map);
-
-        // 2. GPS en Tiempo Real
-        map.locate({ watch: true, enableHighAccuracy: true });
-
-        map.on('locationfound', (e) => {
-            userCoords = e.latlng;
-            if (!userMarker) {
-                userMarker = L.marker(userCoords).addTo(map).bindPopup("Estás aquí");
-                map.setView(userCoords, 16);
-            } else {
-                userMarker.setLatLng(userCoords);
-            }
-        });
-
-        function centerMap() {
-            if (userCoords) map.panTo(userCoords);
-        }
-
-        // 3. Guardar Lugares
-        function saveCurrentLocation() {
-            if (!userCoords) return alert("Esperando señal GPS...");
-            const name = prompt("Nombre del lugar:");
-            if (name) {
-                const newPlace = { id: Date.now(), name, lat: userCoords.lat, lng: userCoords.lng };
-                savedPlaces.push(newPlace);
-                localStorage.setItem('myPlaces', JSON.stringify(savedPlaces));
-                renderList();
-                alert("Lugar guardado.");
-            }
-        }
-
-        // 4. Gestión de la Lista
-        function toggleList() {
-            const list = document.getElementById('place-list-container');
-            list.style.display = list.style.display === 'none' || list.style.display === '' ? 'block' : 'none';
-            if (list.style.display === 'block') renderList();
-        }
-
-        function renderList() {
-            const container = document.getElementById('list-items');
-            container.innerHTML = '';
-            savedPlaces.forEach(place => {
-                const div = document.createElement('div');
-                div.className = 'place-item';
-                div.innerHTML = `
-                        <div class="place-name" id="name-${place.id}" onclick="handleSelect(${place.id})">
-                            ${place.name} <br> <small>${place.lat.toFixed(4)}, ${place.lng.toFixed(4)}</small>
-                        </div>
-                        <div class="place-actions">
-                            <button class="btn-go" onclick="goTo(${place.lat}, ${place.lng})">Ir</button>
-                            <button class="btn-edit" onclick="editPlace(${place.id})">Editar</button>
-                            <button class="btn-del" onclick="deletePlace(${place.id})">Eliminar</button>
-                        </div>
-                    `;
-                container.appendChild(div);
-            });
-        }
-
-        // 5. Rutas y Lógica de Selección
-        function handleSelect(id) {
-            const place = savedPlaces.find(p => p.id === id);
-            const el = document.getElementById(`name-${id}`);
-
-            if (!selectedPlace1) {
-                // Primer clic: seleccionar
-                selectedPlace1 = place;
-                document.querySelectorAll('.place-name').forEach(n => n.classList.remove('selected'));
-                el.classList.add('selected');
-            } else {
-                // Segundo clic: trazar ruta entre los dos
-                calculateRoute(L.latLng(selectedPlace1.lat, selectedPlace1.lng), L.latLng(place.lat, place.lng));
-                selectedPlace1 = null;
-                document.querySelectorAll('.place-name').forEach(n => n.classList.remove('selected'));
-            }
-        }
-
-        function goTo(lat, lng) {
-            if (!userCoords) return alert("No tengo tu ubicación actual.");
-            calculateRoute(userCoords, L.latLng(lat, lng));
-            toggleList();
-        }
-
-        function calculateRoute(start, end) {
-            if (routingControl) map.removeControl(routingControl);
-
-            routingControl = L.Routing.control({
-                waypoints: [start, end],
-                routeWhileDragging: false,
-                language: 'es',
-                createMarker: function () { return null; } // No duplica markers
-            }).on('routesfound', function (e) {
-                const route = e.routes[0];
-                const dist = (route.summary.totalDistance / 1000).toFixed(2);
-                const time = Math.round(route.summary.totalTime / 60);
-                alert(`Distancia: ${dist} km\nTiempo estimado: ${time} min`);
+            // Capa de Google Maps (Mosaicos)
+            L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+                maxZoom: 20,
+                subdomains:['mt0','mt1','mt2','mt3'],
+                attribution: 'Google Maps'
             }).addTo(map);
+
+            // Iniciar seguimiento GPS
+            trackLocation();
         }
 
-        // 6. Editar y Eliminar
-        function editPlace(id) {
-            const place = savedPlaces.find(p => p.id === id);
-            const newName = prompt("Nuevo nombre:", place.name);
-            if (newName) {
-                place.name = newName;
-                localStorage.setItem('myPlaces', JSON.stringify(savedPlaces));
-                renderList();
+        // 2. Seguimiento frecuente con watchPosition
+        function trackLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.watchPosition(function(pos) {
+                    currentCoords = [pos.coords.latitude, pos.coords.longitude];
+                    
+                    if (!userMarker) {
+                        userMarker = L.marker(currentCoords).addTo(map).bindPopup("Estás aquí").openPopup();
+                        map.setView(currentCoords, 15);
+                    } else {
+                        userMarker.setLatLng(currentCoords);
+                    }
+                }, function(err) {
+                    console.error("Error GPS: ", err);
+                }, { enableHighAccuracy: true });
             }
         }
 
-        function deletePlace(id) {
-            if (confirm("¿Seguro que quieres eliminar este lugar?")) {
-                savedPlaces = savedPlaces.filter(p => p.id !== id);
-                localStorage.setItem('myPlaces', JSON.stringify(savedPlaces));
-                renderList();
+        // 3. Botón para centrar
+        function centerMap() {
+            if (currentCoords) {
+                map.panTo(currentCoords);
             }
         }
+
+        // 4. Guardar lugar con nombre y coordenadas
+        function saveCurrentLocation() {
+            if (!currentCoords) return alert("Ubicación no disponible.");
+            
+            const name = prompt("Escribe un nombre para este lugar:");
+            if (name) {
+                const list = document.getElementById('places-list');
+                const li = document.createElement('li');
+                li.innerHTML = `<strong>${name}</strong>: ${currentCoords[0].toFixed(5)}, ${currentCoords[1].toFixed(5)}`;
+                list.appendChild(li);
+                
+                // Añadir un marcador permanente en el lugar guardado
+                L.marker(currentCoords).addTo(map).bindPopup(name);
+            }
+        }
+
+        window.onload = initMap;
     </script>
 </body>
 </html>
