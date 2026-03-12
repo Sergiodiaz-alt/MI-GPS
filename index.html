@@ -3,85 +3,166 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mi GPS Web</title>
-    <!-- Cargamos CSS de Leaflet -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <title>Mi Mapa GPS Personalizado</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com" />
+    
     <style>
-        #map { height: 80vh; width: 100%; }
-        .controls { padding: 10px; background: #f4f4f4; display: flex; gap: 10px; }
-        #saved-places { padding: 10px; border-top: 1px solid #ccc; height: 15vh; overflow-y: auto; }
+        body { margin: 0; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; }
+        #map { flex-grow: 1; width: 100%; }
+        
+        .controls { 
+            padding: 15px; 
+            background: #2c3e50; 
+            display: flex; 
+            gap: 10px; 
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.3s;
+        }
+
+        #btn-center { background: #3498db; color: white; }
+        #btn-save-here { background: #2ecc71; color: white; }
+        #btn-mode-touch { background: #f1c40f; color: #2c3e50; }
+        #btn-mode-touch.active { background: #e74c3c; color: white; }
+
+        #saved-places { 
+            height: 150px; 
+            overflow-y: auto; 
+            background: #ecf0f1; 
+            padding: 10px;
+            border-top: 2px solid #bdc3c7;
+        }
+        
+        ul { list-style: none; padding: 0; margin: 0; }
+        li { margin-bottom: 5px; font-size: 14px; border-bottom: 1px solid #ddd; padding: 3px 0; }
     </style>
 </head>
 <body>
 
     <div class="controls">
-        <button onclick="centerMap()">Centrar Mi Posición</button>
-        <button onclick="saveCurrentLocation()">Guardar Lugar Actual</button>
+        <button id="btn-center" onclick="centerMap()">📍 Centrar Mi Posición</button>
+        <button id="btn-save-here" onclick="saveCurrentLocation()">⭐ Guardar Aquí</button>
+        <button id="btn-mode-touch" onclick="toggleModoSeleccion()">📌 Agregar tocando mapa</button>
     </div>
 
     <div id="map"></div>
-    <div id="saved-places"><strong>Lugares Guardados:</strong><ul id="places-list"></ul></div>
 
-    <!-- Cargamos JS de Leaflet -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <div id="saved-places">
+        <strong>Lugares Guardados:</strong>
+        <ul id="places-list"></ul>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com"></script>
 
     <script>
         let map, userMarker, currentCoords;
+        let modoAgregarSitio = false;
 
         // 1. Inicializar el mapa
         function initMap() {
-            map = L.map('map').setView([0, 0], 15);
+            // Coordenadas iniciales (0,0) hasta recibir GPS
+            map = L.map('map').setView([0, 0], 2);
 
-            // Capa de Google Maps (Mosaicos)
-            L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+            // Capa de Google Maps (Mosaicos estándar)
+            L.tileLayer('https://{s}://{x}&y={y}&z={z}', {
                 maxZoom: 20,
                 subdomains:['mt0','mt1','mt2','mt3'],
                 attribution: 'Google Maps'
             }).addTo(map);
 
+            // Evento para capturar clics en el mapa
+            map.on('click', function(e) {
+                if (modoAgregarSitio) {
+                    agregarLugarManual(e.latlng.lat, e.latlng.lng);
+                }
+            });
+
             // Iniciar seguimiento GPS
             trackLocation();
         }
 
-        // 2. Seguimiento frecuente con watchPosition
+        // 2. Seguimiento GPS en tiempo real
         function trackLocation() {
             if (navigator.geolocation) {
                 navigator.geolocation.watchPosition(function(pos) {
                     currentCoords = [pos.coords.latitude, pos.coords.longitude];
                     
                     if (!userMarker) {
-                        userMarker = L.marker(currentCoords).addTo(map).bindPopup("Estás aquí").openPopup();
-                        map.setView(currentCoords, 15);
+                        // Primera vez que obtiene ubicación
+                        userMarker = L.marker(currentCoords).addTo(map)
+                            .bindPopup("Estás aquí").openPopup();
+                        map.setView(currentCoords, 16);
                     } else {
+                        // Actualiza posición del marcador
                         userMarker.setLatLng(currentCoords);
                     }
                 }, function(err) {
-                    console.error("Error GPS: ", err);
+                    console.warn("Error obteniendo GPS: ", err.message);
                 }, { enableHighAccuracy: true });
+            } else {
+                alert("Tu navegador no soporta GPS.");
             }
         }
 
-        // 3. Botón para centrar
+        // 3. Botón para centrar en el usuario
         function centerMap() {
             if (currentCoords) {
-                map.panTo(currentCoords);
+                map.flyTo(currentCoords, 16);
+            } else {
+                alert("Esperando señal de GPS...");
             }
         }
 
-        // 4. Guardar lugar con nombre y coordenadas
-        function saveCurrentLocation() {
-            if (!currentCoords) return alert("Ubicación no disponible.");
+        // 4. Activar/Desactivar modo "Tocar mapa"
+        function toggleModoSeleccion() {
+            modoAgregarSitio = !modoAgregarSitio;
+            const btn = document.getElementById('btn-mode-touch');
             
-            const name = prompt("Escribe un nombre para este lugar:");
-            if (name) {
-                const list = document.getElementById('places-list');
-                const li = document.createElement('li');
-                li.innerHTML = `<strong>${name}</strong>: ${currentCoords[0].toFixed(5)}, ${currentCoords[1].toFixed(5)}`;
-                list.appendChild(li);
-                
-                // Añadir un marcador permanente en el lugar guardado
-                L.marker(currentCoords).addTo(map).bindPopup(name);
+            if (modoAgregarSitio) {
+                btn.classList.add('active');
+                btn.innerText = "❌ Cancelar (Toca el mapa)";
+            } else {
+                btn.classList.remove('active');
+                btn.innerText = "📌 Agregar tocando mapa";
             }
+        }
+
+        // 5. Lógica para guardar lugares
+        function agregarLugarALista(nombre, lat, lng, tipo) {
+            const lista = document.getElementById('places-list');
+            const li = document.createElement('li');
+            li.innerHTML = `<b>[${tipo}] ${nombre}</b>: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+            lista.prepend(li); // Agrega al inicio de la lista
+
+            // Poner un marcador fijo en el mapa
+            L.marker([lat, lng]).addTo(map).bindPopup(`<b>${nombre}</b>`);
+        }
+
+        function saveCurrentLocation() {
+            if (!currentCoords) return alert("Buscando tu señal...");
+            const nombre = prompt("Nombre para tu ubicación actual:");
+            if (nombre) {
+                agregarLugarALista(nombre, currentCoords[0], currentCoords[1], "GPS");
+            }
+        }
+
+        function agregarLugarManual(lat, lng) {
+            const nombre = prompt("Dale un nombre a este punto del mapa:");
+            if (nombre) {
+                agregarLugarALista(nombre, lat, lng, "MAPA");
+            }
+            toggleModoSeleccion(); // Desactivar modo después de agregar
         }
 
         window.onload = initMap;
